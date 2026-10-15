@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101612">
+  <meta name="description" content="Prosty tuner chromatyczny do gitary.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tuner">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <title>Tuner chromatyczny</title>
+  <style>
+    :root { color-scheme: dark; --bg:#101612; --panel:#1b241e; --muted:#a8b7ac; --green:#72f0a0; --red:#ff7b7b; }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    body { margin:0; min-height:100svh; padding:calc(18px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom)); display:flex; justify-content:center; align-items:center; background:radial-gradient(circle at 50% 0,#26372b,var(--bg) 55%); color:#f5fff7; font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(100%,440px); text-align:center; }
+    h1 { margin:0 0 4px; font-size:clamp(1.65rem,7vw,2rem); letter-spacing:-.035em; }
+    .sub { margin:0 0 20px; color:var(--muted); }
+    .card { padding:22px 16px 18px; border:1px solid #354239; border-radius:24px; background:rgba(27,36,30,.96); box-shadow:0 18px 60px #0005; }
+    #note { font-size:clamp(5rem,22vw,6.5rem); font-weight:800; line-height:1.03; letter-spacing:-.07em; margin:10px 0 0; }
+    #octave { color:var(--muted); margin-top:4px; }
+    #freq { font-variant-numeric:tabular-nums; font-size:1.15rem; margin:8px 0 16px; }
+    .meter { position:relative; height:82px; margin:0 0 4px; }
+    .track { position:absolute; left:5%; right:5%; top:30px; height:8px; border-radius:8px; background:linear-gradient(90deg,#ff7b7b 0%,#e6c86d 32%,#72f0a0 50%,#e6c86d 68%,#ff7b7b 100%); }
+    .tick { position:absolute; left:50%; top:20px; height:28px; width:2px; background:#fff; opacity:.85; }
+    #needle { position:absolute; top:12px; left:50%; height:44px; width:4px; border-radius:4px; background:#fff; transform:translateX(-50%); box-shadow:0 0 12px #fff8; transition:left .07s linear; }
+    .labels { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:.78rem; margin:0 0 13px; }
+    #status { min-height:27px; font-weight:700; color:var(--muted); }
+    button { font:inherit; border:0; border-radius:14px; padding:14px 16px; width:100%; color:#08120b; background:var(--green); font-weight:800; cursor:pointer; touch-action:manipulation; }
+    button:disabled { opacity:.6; }
+    .strings { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-top:18px; }
+    .string { padding:9px 0 8px; border-radius:11px; background:#252f28; color:#e6f1e8; border:1px solid #39463c; font-weight:750; }
+    .string small { display:block; color:var(--muted); font-size:.62rem; font-weight:500; margin-top:2px; }
+    .string.active { border-color:var(--green); background:#203d2a; color:var(--green); }
+    .hint { color:var(--muted); font-size:.82rem; margin:15px 5px 0; }
+    .error { color:var(--red)!important; }
+    .foot { color:#7e8d82; font-size:.72rem; margin:13px 8px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Tuner chromatyczny</h1>
+  <p class="sub">Prosty tuner do gitary</p>
+  <section class="card" aria-live="polite">
+    <div id="note">—</div>
+    <div id="octave">Zagraj pojedynczą strunę</div>
+    <div id="freq">— Hz</div>
+    <div class="meter" aria-label="Wskaźnik strojenia">
+      <div class="track"></div><div class="tick"></div><div id="needle"></div>
+    </div>
+    <div class="labels"><span>♭ Za nisko</span><span>Idealnie</span><span>Za wysoko ♯</span></div>
+    <div id="status">Włącz mikrofon, aby rozpocząć</div>
+    <button id="start">Włącz mikrofon</button>
+    <div class="strings" aria-label="Standardowy strój gitary">
+      <div class="string" data-note="E2">E<small>6. gruba</small></div>
+      <div class="string" data-note="A2">A<small>5.</small></div>
+      <div class="string" data-note="D3">D<small>4.</small></div>
+      <div class="string" data-note="G3">G<small>3.</small></div>
+      <div class="string" data-note="B3">B<small>2.</small></div>
+      <div class="string" data-note="E4">E<small>1. cienka</small></div>
+    </div>
+  </section>
+  <p class="hint">Zagraj jedną strunę i pozwól jej wybrzmieć. Dostosuj strój, aż wskaźnik będzie na środku.</p>
+  <p class="foot">Mikrofon działa tylko po udzieleniu zgody. Dla najlepszych wyników ogranicz hałas w tle.</p>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const startBtn = $('start'), noteEl = $('note'), octaveEl = $('octave');
+  const freqEl = $('freq'), statusEl = $('status'), needle = $('needle');
+  const stringEls = [...document.querySelectorAll('.string')];
+  const names = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  let ctx, analyser, stream, source, buffer, running = false, raf = 0;
+
+  function autoCorrelate(buf, sampleRate) {
+    let rms = 0;
+    for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / buf.length);
+    if (rms < 0.012) return -1;
+    let size = buf.length, bestLag = -1, best = -Infinity;
+    // Correlation over plausible guitar range, roughly 40–1000 Hz.
+    const minLag = Math.max(2, Math.floor(sampleRate / 1000));
+    const maxLag = Math.min(size - 2, Math.floor(sampleRate / 38));
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let sum = 0;
+      for (let i = 0; i < size - lag; i++) sum += buf[i] * buf[i + lag];
+      if (sum > best) { best = sum; bestLag = lag; }
+    }
+    if (bestLag < 0) return -1;
+    const left = bestLag > minLag ? correlation(buf, bestLag - 1) : best;
+    const center = best;
+    const right = bestLag < maxLag ? correlation(buf, bestLag + 1) : best;
+    const denom = left - 2 * center + right;
+    const shift = denom ? 0.5 * (left - right) / denom : 0;
+    return sampleRate / (bestLag + shift);
+  }
+  function correlation(buf, lag) {
+    let sum = 0;
+    for (let i = 0; i < buf.length - lag; i++) sum += buf[i] * buf[i + lag];
+    return sum;
+  }
+  function showFrequency(freq) {
+    const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+    const target = 440 * Math.pow(2, (midi - 69) / 12);
+    const cents = 1200 * Math.log2(freq / target);
+    const name = names[(midi % 12 + 12) % 12], octave = Math.floor(midi / 12) - 1;
+    noteEl.textContent = name;
+    octaveEl.textContent = `Oktawa ${octave}`;
+    freqEl.textContent = `${freq.toFixed(2)} Hz`;
+    needle.style.left = `${50 + Math.max(-45, Math.min(45, cents * 0.9))}%`;
+    if (Math.abs(cents) <= 5) {
+      statusEl.textContent = 'Idealnie nastrojona';
+      statusEl.style.color = 'var(--green)';
+    } else if (cents < 0) {
+      statusEl.textContent = `Za nisko · ${Math.abs(Math.round(cents))} centów`;
+      statusEl.style.color = 'var(--red)';
+    } else {
+      statusEl.textContent = `Za wysoko · ${Math.round(cents)} centów`;
+      statusEl.style.color = 'var(--red)';
+    }
+    const fullNote = `${name}${octave}`;
+    stringEls.forEach(el => el.classList.toggle('active', el.dataset.note === fullNote));
+  }
+  function tick() {
+    if (!running) return;
+    analyser.getFloatTimeDomainData(buffer);
+    const freq = autoCorrelate(buffer, ctx.sampleRate);
+    if (freq >= 38 && freq <= 1000) showFrequency(freq);
+    else {
+      statusEl.textContent = 'Słucham… zagraj pojedynczą strunę';
+      statusEl.style.color = 'var(--muted)';
+      needle.style.left = '50%';
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  function setError(message) {
+    statusEl.textContent = message;
+    statusEl.classList.add('error');
+  }
+  startBtn.addEventListener('click', async () => {
+    statusEl.classList.remove('error');
+    if (running) {
+      running = false;
+      cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (ctx && ctx.state !== 'closed') await ctx.close();
+      startBtn.textContent = 'Włącz mikrofon';
+      noteEl.textContent = '—'; octaveEl.textContent = 'Zagraj pojedynczą strunę';
+      freqEl.textContent = '— Hz'; statusEl.textContent = 'Mikrofon wyłączony';
+      statusEl.style.color = 'var(--muted)'; needle.style.left = '50%';
+      stringEls.forEach(el => el.classList.remove('active'));
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError('Mikrofon wymaga Safari i bezpiecznego adresu HTTPS.');
+      return;
+    }
+    startBtn.disabled = true;
+    statusEl.textContent = 'Prośba o dostęp do mikrofonu…';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      await ctx.resume();
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 4096;
+      analyser.smoothingTimeConstant = 0;
+      source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      buffer = new Float32Array(analyser.fftSize);
+      running = true;
+      startBtn.textContent = 'Wyłącz mikrofon';
+      statusEl.textContent = 'Słucham… zagraj pojedynczą strunę';
+      statusEl.style.color = 'var(--muted)';
+      tick();
+    } catch (err) {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      setError(err.name === 'NotAllowedError'
+        ? 'Brak zgody na mikrofon. Sprawdź ustawienia Safari.'
+        : 'Nie udało się uruchomić mikrofonu. Użyj HTTPS i spróbuj ponownie.');
+    } finally {
+      startBtn.disabled = false;
+    }
+  });
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
